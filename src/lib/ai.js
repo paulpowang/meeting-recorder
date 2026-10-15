@@ -167,6 +167,14 @@ function blobToBase64(blob) {
   })
 }
 
+/** Tiny prompt for live line batches — save tokens */
+export async function translateLiveBatch(englishText) {
+  return chatComplete({
+    system: 'EN→zh-TW. Output translation only. Keep names (e.g. Paul).',
+    user: englishText.slice(0, 800),
+  })
+}
+
 export async function translateToZhTw(englishText) {
   return chatComplete({
     system:

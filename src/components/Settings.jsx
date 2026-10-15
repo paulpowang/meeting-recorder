@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   PROVIDERS,
+  LIVE_TRANSLATE_ENGINES,
   getProvider,
   setProvider,
   getApiKey,
@@ -11,7 +12,12 @@ import {
   setCheatModeEnabled,
   getLiveSttEnabled,
   setLiveSttEnabled,
+  getLiveTranslateEngine,
+  setLiveTranslateEngine,
+  getLiveTranslateHybrid,
+  setLiveTranslateHybrid,
 } from '../lib/settings'
+import { browserTranslatorSupported } from '../lib/liveTranslate'
 
 export default function Settings({ onBack }) {
   const [provider, setProv] = useState('groq')
@@ -20,6 +26,8 @@ export default function Settings({ onBack }) {
   const [context, setContext] = useState('')
   const [cheat, setCheat] = useState(true)
   const [liveStt, setLiveStt] = useState(true)
+  const [xlEngine, setXlEngine] = useState('free')
+  const [xlHybrid, setXlHybrid] = useState(false)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -29,6 +37,8 @@ export default function Settings({ onBack }) {
     setContext(getPaulContext())
     setCheat(getCheatModeEnabled())
     setLiveStt(getLiveSttEnabled())
+    setXlEngine(getLiveTranslateEngine())
+    setXlHybrid(getLiveTranslateHybrid())
   }, [])
 
   function onProviderChange(id) {
@@ -42,6 +52,8 @@ export default function Settings({ onBack }) {
     setPaulContext(context)
     setCheatModeEnabled(cheat)
     setLiveSttEnabled(liveStt)
+    setLiveTranslateEngine(xlEngine)
+    setLiveTranslateHybrid(xlHybrid)
     setSaved(true)
     setTimeout(() => setSaved(false), 1800)
   }
@@ -68,8 +80,8 @@ export default function Settings({ onBack }) {
       <section className="card">
         <h2>$0 建議組合（預設）</h2>
         <p className="hint">
-          即時英文轉寫用瀏覽器 Web Speech（免金鑰）。翻譯／總結／高品質轉寫／小抄預設用{' '}
-          <strong>Groq 免費層</strong>（免信用卡）。也可改 Gemini 免費層；OpenAI 需儲值。
+          即時英文轉寫用 Web Speech（免金鑰）。翻譯／總結／小抄預設用 <strong>Groq</strong>；也可改
+          Gemini。即時中文翻譯預設 MyMemory（免 Key），可改 AI／瀏覽器 Translator。
         </p>
         <label className="field">
           <span>AI 供應商</span>
@@ -90,7 +102,7 @@ export default function Settings({ onBack }) {
           </p>
         )}
         <p className="warn">
-          金鑰只存在你這台裝置的 localStorage，不會上傳到本 App 伺服器。靜態網站無法安全內建金鑰，所以必須由你自己填入；公用電腦請用完清除。
+          金鑰只存在本機 localStorage。靜態網站無法安全內建金鑰，請自行填入；公用電腦請用完清除。
         </p>
         <label className="field">
           <span>API Key</span>
@@ -124,13 +136,45 @@ export default function Settings({ onBack }) {
       </section>
 
       <section className="card">
+        <h2>即時中文翻譯</h2>
+        <p className="hint">
+          每個 Web Speech 定稿句會 debounce～1.5 秒後批次翻成繁中，顯示在英文下方。
+          {browserTranslatorSupported()
+            ? ' 此瀏覽器支援 Translator API。'
+            : ' 此環境可能不支援瀏覽器 Translator（多半僅桌面 Chrome／Edge）。'}
+        </p>
+        <label className="field">
+          <span>翻譯引擎</span>
+          <select value={xlEngine} onChange={(e) => setXlEngine(e.target.value)}>
+            {LIVE_TRANSLATE_ENGINES.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={xlHybrid || xlEngine === 'hybrid'}
+            onChange={(e) => setXlHybrid(e.target.checked)}
+            disabled={xlEngine === 'hybrid' || xlEngine === 'off' || xlEngine === 'ai'}
+          />
+          <span>平常用瀏覽器／免費引擎，遇到 Paul 才改用 AI（省額度）</span>
+        </label>
+        <button type="button" className="primary" onClick={save}>
+          儲存設定
+        </button>
+      </section>
+
+      <section className="card">
         <h2>小抄模式（會議）</h2>
         <label className="toggle">
           <input type="checkbox" checked={cheat} onChange={(e) => setCheat(e.target.checked)} />
           <span>偵測到「Paul」時用 AI 產生建議回答</span>
         </label>
         <p className="hint">
-          逐字稿中的黃底標示與跳轉<strong>不需要 AI</strong>。小抄建議回答需要上方 API Key。請先取得會議參與者同意再錄音。
+          黃底標示與跳轉不需 AI。小抄建議需 API Key。請先取得會議參與者同意再錄音。
         </p>
         <label className="field">
           <span>Paul 的角色／專案脈絡（選填）</span>

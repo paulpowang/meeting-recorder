@@ -7,37 +7,48 @@ const KEYS = {
 const CONTEXT_KEY = 'vn-paul-context'
 const CHEAT_MODE_KEY = 'vn-cheat-mode'
 const LIVE_STT_KEY = 'vn-live-stt'
+const LIVE_XL_KEY = 'vn-live-xl-engine'
+const LIVE_XL_HYBRID = 'vn-live-xl-hybrid'
 
-/** Default: free combo — Web Speech live + Groq free key for AI */
 export const DEFAULT_PROVIDER = 'groq'
 
 export const PROVIDERS = [
   {
     id: 'groq',
     label: 'Groq（免費額度・建議）',
-    hint: '免信用卡。Whisper 轉寫 + Llama／GPT-OSS 翻譯／總結／小抄。免費層約 20 RPM、每日音訊秒數上限。',
+    hint: '免信用卡。Whisper 轉寫 + LLM 翻譯／總結／小抄。',
     keyUrl: 'https://console.groq.com/keys',
     free: true,
   },
   {
     id: 'gemini',
     label: 'Google Gemini（免費層）',
-    hint: 'AI Studio 免費額度；Flash 系列輸入／輸出免費但有 RPM／RPD 限制。免費層內容可能用於改進產品。',
+    hint: 'AI Studio 免費額度；免費層內容可能用於改進產品。',
     keyUrl: 'https://aistudio.google.com/apikey',
     free: true,
   },
   {
     id: 'openai',
     label: 'OpenAI（需儲值）',
-    hint: '新帳號需預付至少約 $5，無常設免費額度。品質高但非 $0。',
+    hint: '新帳號需預付；無常設免費額度。',
     keyUrl: 'https://platform.openai.com/api-keys',
     free: false,
   },
 ]
 
+export const LIVE_TRANSLATE_ENGINES = [
+  { id: 'ai', label: 'AI（使用者 Key，預設 Groq）' },
+  { id: 'browser', label: '瀏覽器內建 Translator（Chrome 桌面）' },
+  { id: 'free', label: '免費免 Key（MyMemory）' },
+  { id: 'hybrid', label: '瀏覽器／免費為主，Paul 附近才用 AI' },
+  { id: 'off', label: '關閉即時翻譯' },
+]
+
 export function getProvider() {
   try {
-    return localStorage.getItem(PROVIDER_KEY) || DEFAULT_PROVIDER
+    const p = localStorage.getItem(PROVIDER_KEY) || DEFAULT_PROVIDER
+    if (p === 'github') return DEFAULT_PROVIDER
+    return p
   } catch {
     return DEFAULT_PROVIDER
   }
@@ -116,6 +127,38 @@ export function getLiveSttEnabled() {
 export function setLiveSttEnabled(on) {
   try {
     localStorage.setItem(LIVE_STT_KEY, on ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getLiveTranslateEngine() {
+  try {
+    return localStorage.getItem(LIVE_XL_KEY) || 'free'
+  } catch {
+    return 'free'
+  }
+}
+
+export function setLiveTranslateEngine(id) {
+  try {
+    localStorage.setItem(LIVE_XL_KEY, id)
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getLiveTranslateHybrid() {
+  try {
+    return localStorage.getItem(LIVE_XL_HYBRID) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function setLiveTranslateHybrid(on) {
+  try {
+    localStorage.setItem(LIVE_XL_HYBRID, on ? '1' : '0')
   } catch {
     /* ignore */
   }
