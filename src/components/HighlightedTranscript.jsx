@@ -32,6 +32,7 @@ export default function HighlightedTranscript({
   text = '',
   segments = [],
   interim = '',
+  interimZh = '',
   title = '英文逐字稿',
 }) {
   const containerRef = useRef(null)
@@ -131,14 +132,24 @@ export default function HighlightedTranscript({
                 ) : null}
               </div>
             ))}
-            {interim ? <p className="interim">{interim}</p> : null}
+            {interim ? (
+              <div className="bi-line interim-block">
+                <p className="interim">{interim}</p>
+                {interimZh ? <p className="line-zh interim-zh">{interimZh}</p> : null}
+              </div>
+            ) : null}
           </div>
         ) : !flat && !interim ? (
           <p className="empty">尚無文字。開始錄音後會即時顯示。</p>
         ) : (
           <div>
             <EnLine text={flat} activeIdx={active} />
-            {interim ? <p className="interim">{interim}</p> : null}
+            {interim ? (
+              <div className="interim-block">
+                <p className="interim">{interim}</p>
+                {interimZh ? <p className="line-zh interim-zh">{interimZh}</p> : null}
+              </div>
+            ) : null}
           </div>
         )}
       </div>

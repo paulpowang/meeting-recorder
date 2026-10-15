@@ -21,7 +21,8 @@ import {
   getLiveTranslateEngine,
 } from './lib/settings'
 import { createLiveRecognizer, findPaulMentions, sliceRecentTranscript } from './lib/speech'
-import { createLiveTranslateQueue } from './lib/liveTranslate'
+import { createLiveTranslateQueue, createInterimTranslator } from './lib/liveTranslate'
+import { APP_BUILD_LABEL } from './lib/version'
 import { transcribeAudio, translateToZhTw, summarizeTranscript, generateCheatSheet } from './lib/ai'
 
 function uid() {
@@ -51,6 +52,7 @@ export default function App() {
   const [elapsed, setElapsed] = useState(0)
   const [liveText, setLiveText] = useState('')
   const [liveInterim, setLiveInterim] = useState('')
+  const [interimZh, setInterimZh] = useState('')
   const [liveSegments, setLiveSegments] = useState([])
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -69,6 +71,7 @@ export default function App() {
   const lastPaulAtRef = useRef(0)
   const cheatBusyRef = useRef(false)
   const xlQueueRef = useRef(null)
+  const interimXlRef = useRef(null)
 
   const refresh = useCallback(async () => {
     setRecs(await listRecordings())
@@ -100,6 +103,8 @@ export default function App() {
     recognizerRef.current = null
     xlQueueRef.current?.close?.()
     xlQueueRef.current = null
+    interimXlRef.current?.close?.()
+    interimXlRef.current = null
     if (timerRef.current) clearInterval(timerRef.current)
     try {
       if (mediaRef.current && mediaRef.current.state !== 'inactive') mediaRef.current.stop()
@@ -156,6 +161,8 @@ export default function App() {
       return next
     })
     setLiveInterim('')
+    setInterimZh('')
+    interimXlRef.current?.clear?.()
     xlQueueRef.current?.enqueue(id, chunk)
   }
 
@@ -168,8 +175,10 @@ export default function App() {
     lastPaulAtRef.current = 0
     chunksRef.current = []
     xlQueueRef.current?.close?.()
+    interimXlRef.current?.close?.()
+    setInterimZh('')
     xlQueueRef.current = createLiveTranslateQueue({
-      debounceMs: 1500,
+      debounceMs: 500,
       onResults: (rows) => {
         rows.forEach(({ id, zh }) => patchSegment(id, { zh: zh || '', zhPending: false }))
       },
@@ -226,7 +235,10 @@ export default function App() {
 
       if (getLiveSttEnabled()) {
         const recz = createLiveRecognizer({
-          onPartial: (t) => setLiveInterim(t),
+          onPartial: (txt) => {
+            setLiveInterim(txt)
+            interimXlRef.current?.update?.(txt)
+          },
           onFinal: onFinalSpeech,
           onError: (err) => {
             if (err !== 'not-allowed') setError(`即時轉寫：${err}`)
@@ -491,6 +503,7 @@ export default function App() {
           onDismiss={() => setCheatCard(null)}
           onKeep={keepCheat}
         />
+        <footer className="app-footer">{APP_BUILD_LABEL} · 語音筆記</footer>
       </div>
     )
   }
@@ -513,7 +526,7 @@ export default function App() {
         {!recording ? (
           <section className="card recorder">
             <p className="hint">
-              預設 $0：Web Speech 轉寫 + MyMemory 即時中文；AI（Groq）用於會後整理／小抄。
+              有 Groq Key 時即時翻譯預設 AI（半即時）。設定頁可改引擎。版本見頁尾。
             </p>
             <div className="timer">{formatDuration(elapsed)}</div>
             <button type="button" className="rec-btn" onClick={startRecording}>
@@ -538,6 +551,7 @@ export default function App() {
             text={liveText}
             segments={liveSegments}
             interim={liveInterim}
+            interimZh={interimZh}
             title="即時逐字稿（英＋中）"
           />
         )}
@@ -579,6 +593,7 @@ export default function App() {
         onDismiss={() => setCheatCard(null)}
         onKeep={keepCheat}
       />
+      <footer className="app-footer">{APP_BUILD_LABEL} · 語音筆記</footer>
     </div>
   )
 }

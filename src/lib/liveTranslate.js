@@ -7,6 +7,29 @@ const MYMEMORY = 'https://api.mymemory.translated.net/get'
 let browserTranslator = null
 let browserTranslatorPromise = null
 
+/** Simple client-side rate limit for Groq free (~20 RPM chat). */
+const aiCallTimes = []
+const AI_MAX_PER_MIN = 18
+
+export function canCallAiNow() {
+  const now = Date.now()
+  while (aiCallTimes.length && now - aiCallTimes[0] > 60_000) aiCallTimes.shift()
+  return aiCallTimes.length < AI_MAX_PER_MIN
+}
+
+function noteAiCall() {
+  aiCallTimes.push(Date.now())
+}
+
+export async function waitForAiSlot(maxWaitMs = 4000) {
+  const start = Date.now()
+  while (!canCallAiNow()) {
+    if (Date.now() - start > maxWaitMs) return false
+    await new Promise((r) => setTimeout(r, 350))
+  }
+  return true
+}
+
 export function browserTranslatorSupported() {
   return typeof globalThis.Translator === 'function'
 }
@@ -34,7 +57,7 @@ async function getBrowserTranslator() {
         browserTranslator = t
         return t
       } catch {
-        /* try next pair */
+        /* try next */
       }
     }
     return null
@@ -59,12 +82,12 @@ async function translateBrowser(text) {
 }
 
 async function translateAi(text) {
+  const ok = await waitForAiSlot()
+  if (!ok) throw new Error('AI 翻譯節流中（避免超過 Groq 免費 RPM），稍後重試')
+  noteAiCall()
   return translateLiveBatch(text)
 }
 
-/**
- * Resolve engine for a batch. hybrid = browser/free normally, AI if Paul mentioned.
- */
 export async function translateSegmentBatch(texts, { forceAi = false } = {}) {
   const joined = texts.join(' ').trim()
   if (!joined) return texts.map(() => '')
@@ -85,7 +108,6 @@ export async function translateSegmentBatch(texts, { forceAi = false } = {}) {
   async function run(modeName) {
     if (modeName === 'ai') {
       if (!getApiKey(getProvider())) throw new Error('未設定 AI Key')
-      // One small prompt for the batch; split by numbered lines if multiple
       if (texts.length === 1) return [await translateAi(texts[0])]
       const numbered = texts.map((t, i) => `${i + 1}. ${t}`).join('\n')
       const raw = await translateAi(numbered)
@@ -107,7 +129,6 @@ export async function translateSegmentBatch(texts, { forceAi = false } = {}) {
   try {
     return await run(mode)
   } catch (e) {
-    // Fallback chain for robustness
     if (mode === 'ai') {
       try {
         return await run(browserTranslatorSupported() ? 'browser' : 'free')
@@ -133,17 +154,20 @@ function splitNumbered(raw, n) {
     .filter(Boolean)
   if (lines.length >= n) return lines.slice(0, n)
   if (n === 1) return [raw.trim()]
-  // pad
   const out = []
   for (let i = 0; i < n; i++) out.push(lines[i] || '')
   return out
 }
 
+function wordCount(s) {
+  return (String(s).trim().match(/\S+/g) || []).length
+}
+
 /**
- * Debounced queue: accumulate finalized sentences, flush after delay or size.
+ * Finalized-line queue — default debounce 500ms.
  */
-export function createLiveTranslateQueue({ onResults, onError, debounceMs = 1500 }) {
-  let pending = [] // { id, text }
+export function createLiveTranslateQueue({ onResults, onError, debounceMs = 500 }) {
+  let pending = []
   let timer = null
   let busy = false
   let closed = false
@@ -157,7 +181,6 @@ export function createLiveTranslateQueue({ onResults, onError, debounceMs = 1500
     busy = true
     const batch = pending.splice(0, pending.length)
     try {
-      // batch short sentences: prefer 1–3 items or ~280 chars
       const groups = []
       let cur = []
       let len = 0
@@ -204,6 +227,77 @@ export function createLiveTranslateQueue({ onResults, onError, debounceMs = 1500
       closed = true
       if (timer) clearTimeout(timer)
       pending = []
+    },
+  }
+}
+
+/**
+ * Semi-live interim translator: fire when +8 words or 2.5s since last send.
+ * Returns { update(text), clear(), close() }.
+ */
+export function createInterimTranslator({ onZh, onError }) {
+  let lastSent = ''
+  let lastWords = 0
+  let timer = null
+  let inFlight = false
+  let closed = false
+  let seq = 0
+  let firstSeenAt = 0
+
+  async function send(text) {
+    if (closed || getLiveTranslateEngine() === 'off') return
+    const t = text.trim()
+    if (!t || t === lastSent) return
+    if (inFlight) return
+    inFlight = true
+    const my = ++seq
+    lastSent = t
+    lastWords = wordCount(t)
+    try {
+      const [zh] = await translateSegmentBatch([t])
+      if (!closed && my === seq) onZh?.(zh || '')
+    } catch (e) {
+      onError?.(e)
+    } finally {
+      inFlight = false
+    }
+  }
+
+  return {
+    update(text) {
+      if (closed || getLiveTranslateEngine() === 'off') return
+      const t = String(text || '').trim()
+      if (!t) {
+        this.clear()
+        return
+      }
+      if (!firstSeenAt) firstSeenAt = Date.now()
+      const words = wordCount(t)
+      const grew = words - lastWords >= 8
+      const elapsed = Date.now() - (firstSeenAt || Date.now())
+
+      if (timer) clearTimeout(timer)
+      if (grew) {
+        send(t)
+      } else {
+        timer = setTimeout(() => send(t), Math.max(0, 2500 - (Date.now() - firstSeenAt)))
+      }
+      // also fire if already past 2.5s of same utterance growing slowly
+      if (elapsed >= 2500 && words > lastWords) {
+        send(t)
+      }
+    },
+    clear() {
+      if (timer) clearTimeout(timer)
+      timer = null
+      lastSent = ''
+      lastWords = 0
+      firstSeenAt = 0
+      seq++ // invalidate in-flight result
+    },
+    close() {
+      closed = true
+      this.clear()
     },
   }
 }

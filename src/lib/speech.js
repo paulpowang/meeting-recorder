@@ -2,6 +2,10 @@ export function speechSupported() {
   return !!(window.SpeechRecognition || window.webkitSpeechRecognition)
 }
 
+/**
+ * Live recognizer with iOS Safari-friendly auto-restart.
+ * iOS often ends continuous recognition after a pause; we restart with a short delay.
+ */
 export function createLiveRecognizer({ onPartial, onFinal, onError, lang = 'en-US' }) {
   const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition
   if (!Ctor) return null
@@ -13,6 +17,31 @@ export function createLiveRecognizer({ onPartial, onFinal, onError, lang = 'en-U
   recognition.maxAlternatives = 1
 
   let stopped = false
+  let restartTimer = null
+  let starting = false
+
+  function safeStart() {
+    if (stopped || starting) return
+    starting = true
+    try {
+      recognition.start()
+    } catch {
+      /* InvalidStateError if already started */
+    } finally {
+      setTimeout(() => {
+        starting = false
+      }, 300)
+    }
+  }
+
+  function scheduleRestart(ms = 280) {
+    if (stopped) return
+    if (restartTimer) clearTimeout(restartTimer)
+    restartTimer = setTimeout(() => {
+      restartTimer = null
+      safeStart()
+    }, ms)
+  }
 
   recognition.onresult = (event) => {
     let interim = ''
@@ -28,33 +57,45 @@ export function createLiveRecognizer({ onPartial, onFinal, onError, lang = 'en-U
   }
 
   recognition.onerror = (e) => {
-    if (e.error === 'aborted' || e.error === 'no-speech') return
-    if (onError) onError(e.error || 'speech-error')
+    const err = e.error || 'speech-error'
+    // iOS / Chrome: no-speech and aborted are normal; restart
+    if (err === 'aborted') return
+    if (err === 'no-speech') {
+      scheduleRestart(200)
+      return
+    }
+    if (err === 'network') {
+      scheduleRestart(800)
+      if (onError) onError(err)
+      return
+    }
+    if (onError) onError(err)
+    // Still try to keep listening on soft errors
+    if (!stopped && err !== 'not-allowed' && err !== 'service-not-allowed') {
+      scheduleRestart(500)
+    }
   }
 
   recognition.onend = () => {
-    if (!stopped) {
-      try {
-        recognition.start()
-      } catch {
-        /* already started */
-      }
-    }
+    // Safari often fires onend after each utterance even with continuous=true
+    if (!stopped) scheduleRestart(250)
   }
 
   return {
     start() {
       stopped = false
-      try {
-        recognition.start()
-      } catch {
-        /* ignore */
-      }
+      safeStart()
     },
     stop() {
       stopped = true
+      if (restartTimer) clearTimeout(restartTimer)
       try {
         recognition.stop()
+      } catch {
+        /* ignore */
+      }
+      try {
+        recognition.abort()
       } catch {
         /* ignore */
       }

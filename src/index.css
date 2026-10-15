@@ -212,3 +212,30 @@ a { color: #5eead4; }
 .line-en { margin: 0 0 4px; font-size: 0.98rem; }
 .line-zh { margin: 0; color: #99f6e4; font-size: 0.92rem; }
 .line-zh.pending { color: var(--muted); font-style: italic; }
+
+.app-footer {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding: 10px 12px 18px;
+  opacity: 0.85;
+}
+.highlight-card {
+  border: 2px solid #2dd4bf !important;
+  box-shadow: 0 0 0 1px #14b8a644;
+}
+.badge-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.badge-row h2 { margin: 0; }
+.pill {
+  background: #fde047; color: #422006; font-weight: 800;
+  font-size: 0.75rem; padding: 3px 8px; border-radius: 999px;
+}
+.field-label-lg { font-weight: 700; font-size: 1rem; }
+.select-lg {
+  font-size: 1.05rem !important;
+  padding: 14px 12px !important;
+  min-height: 48px;
+}
+.version-line { font-size: 1.1rem; font-weight: 700; margin: 0 0 6px; }
+.interim-zh { opacity: 0.85; }
+.interim-block { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }

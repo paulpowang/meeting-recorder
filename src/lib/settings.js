@@ -134,7 +134,13 @@ export function setLiveSttEnabled(on) {
 
 export function getLiveTranslateEngine() {
   try {
-    return localStorage.getItem(LIVE_XL_KEY) || 'free'
+    const stored = localStorage.getItem(LIVE_XL_KEY)
+    if (stored) return stored
+    // Default: if Groq selected and key present → AI; else free MyMemory
+    const prov = localStorage.getItem(PROVIDER_KEY) || DEFAULT_PROVIDER
+    const key = localStorage.getItem(KEYS[prov] || KEYS.groq) || ''
+    if (prov === 'groq' && key.trim()) return 'ai'
+    return 'free'
   } catch {
     return 'free'
   }

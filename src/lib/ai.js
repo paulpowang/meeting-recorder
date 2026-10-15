@@ -167,12 +167,44 @@ function blobToBase64(blob) {
   })
 }
 
-/** Tiny prompt for live line batches — save tokens */
+/** Tiny prompt for live line batches — save tokens; prefers fast Groq model. */
 export async function translateLiveBatch(englishText) {
+  const provider = getProvider()
+  if (provider === 'groq') {
+    return groqChatFast({
+      system: 'EN→zh-TW. Output translation only. Keep names (e.g. Paul).',
+      user: englishText.slice(0, 600),
+    })
+  }
   return chatComplete({
     system: 'EN→zh-TW. Output translation only. Keep names (e.g. Paul).',
-    user: englishText.slice(0, 800),
+    user: englishText.slice(0, 600),
   })
+}
+
+async function groqChatFast({ system, user }) {
+  const key = requireKey('groq')
+  // Small/fast model for semi-live translation (Groq free tier)
+  const body = {
+    model: 'llama-3.1-8b-instant',
+    temperature: 0.1,
+    max_tokens: 256,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+  }
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`Groq 失敗 (${res.status}): ${(await res.text()).slice(0, 220)}`)
+  const data = await res.json()
+  return data.choices?.[0]?.message?.content?.trim() || ''
 }
 
 export async function translateToZhTw(englishText) {
